@@ -53,7 +53,6 @@
   .progress-bg { height: 10px; background: #222; border-radius: 5px; overflow: hidden; margin-top: 10px; }
   .progress-fill { height: 100%; background: linear-gradient(90deg, var(--gold), #ffecb3); transition: 0.5s; }
 
-  /* شاشة تحميل بسيطة */
   #loading { display: none; text-align: center; color: var(--gold); font-size: 18px; padding: 20px; font-weight: bold; }
 
   @media (max-width: 600px) { .items-inputs { grid-template-columns: 1fr; } }
@@ -70,18 +69,15 @@
   </div>
 </nav>
 
-<div id="loading">جاري تحميل البيانات من الخادم... ⏳</div>
+<div id="loading">جاري معالجة البيانات... ⏳</div>
 <main id="app-content"></main>
 
 <script>
 /* ─── إعدادات Supabase ─── */
 const { createClient } = supabase;
-
-// رابط المشروع (موجود)
 const SUPABASE_URL = 'https://ktdlzqhqccjkolawanui.supabase.co'; 
-// !!! ضع مفتاح الـ API هنا !!!
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt0ZGx6cWhxY2Nqa29sYXdhbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxMzIzMzQsImV4cCI6MjA3NTcwODMzNH0.ux62NTzINmgrdkQoqgKZfhdCknUwSgDRdt59pZjOv04';
-
+// !!! لا تنسى وضع مفتاح الـ API هنا !!!
+const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY_HERE';
 const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /* ─── الثوابت ─── */
@@ -95,19 +91,16 @@ const ITEMS = [
 
 const DAILY_MAX_PTS = 60; 
 const YEARLY_TARGET_PTS = 21900; 
-const TARGET_MONEY = 50000; 
-const MONEY_PER_POINT = TARGET_MONEY / YEARLY_TARGET_PTS;
+const MONEY_PER_POINT = 2.25; // التعديل الجديد لقيمة النقطة
 
-/* ─── حالة التطبيق (State) ─── */
+/* ─── حالة التطبيق ─── */
 let currentProfile = 'omar';
 let editingId = null;
-let membersMap = {}; // ستحتوي على {'omar': 'id', ...}
+let membersMap = {}; 
 let currentData = [];
 let currentAdj = 0;
 
-/* ─── جلب البيانات (Async/Await) ─── */
-
-// 1. جلب معرفات الأشخاص مرة واحدة عند بدء التطبيق
+/* ─── جلب البيانات ─── */
 async function initApp() {
   document.getElementById('loading').style.display = 'block';
   const { data, error } = await db.from('family_members').select('*');
@@ -115,26 +108,23 @@ async function initApp() {
     data.forEach(m => { membersMap[m.member_slug] = m.id; });
     await loadProfileData(currentProfile);
   } else if (error) {
-    alert("خطأ في الاتصال بقاعدة البيانات. تأكد من إعدادات Supabase.");
+    alert("خطأ في الاتصال بقاعدة البيانات.");
     console.error(error);
   }
 }
 
-// 2. جلب بيانات شخص محدد
 async function loadProfileData(slug) {
   document.getElementById('loading').style.display = 'block';
-  document.getElementById('app-content').innerHTML = ''; // إخفاء المحتوى أثناء التحميل
+  document.getElementById('app-content').innerHTML = ''; 
   
   const memberId = membersMap[slug];
 
-  // جلب سجلات الأداء
   const { data: logs } = await db
     .from('family_daily_logs')
     .select('*')
     .eq('member_id', memberId)
     .order('log_date', { ascending: false });
 
-  // جلب النقاط الإضافية وحساب المجموع
   const { data: adjs } = await db
     .from('family_points_adjustments')
     .select('adjustment_amount')
@@ -147,7 +137,7 @@ async function loadProfileData(slug) {
   renderApp();
 }
 
-/* ─── الحفظ والتعديل (Operations) ─── */
+/* ─── الحفظ والتعديل ─── */
 async function handleSave() {
   const memberId = membersMap[currentProfile];
   const date = document.getElementById('input-date').value;
@@ -155,7 +145,6 @@ async function handleSave() {
   
   if (!date) return alert('يرجى اختيار التاريخ');
 
-  // تجميع التقييمات ككائن جاهز للحفظ في الأعمدة
   const newRow = {
     member_id: memberId,
     log_date: date,
@@ -167,14 +156,12 @@ async function handleSave() {
     mom_respect_score: parseInt(document.getElementById('val-mom').value)
   };
 
-  document.getElementById('loading').style.display = 'block'; // شاشة انتظار
+  document.getElementById('loading').style.display = 'block'; 
 
   if (editingId) {
-    // تعديل
     const { error } = await db.from('family_daily_logs').update(newRow).eq('id', editingId);
     if (error) alert("تعذر التعديل: " + error.message);
   } else {
-    // إضافة
     const { error } = await db.from('family_daily_logs').insert(newRow);
     if (error) {
       if (error.code === '23505') alert('هذا التاريخ مسجل بالفعل!');
@@ -183,20 +170,25 @@ async function handleSave() {
   }
 
   editingId = null;
-  await loadProfileData(currentProfile); // تحديث الواجهة بالبيانات من السيرفر
+  await loadProfileData(currentProfile); 
 }
 
+/* التعديل الذكي للنقاط الإضافية */
 async function handleEditAdjustment() {
-  const newVal = prompt(`أدخل عدد النقاط الإضافية أو المخصومة (سالب):`, 0);
+  // يظهر الرقم الحالي ويطلب الرقم الجديد
+  const newVal = prompt(`النقاط الإضافية الحالية هي: ${currentAdj}\n\nأدخل إجمالي النقاط الإضافية الجديد الذي تريده (سيتم حساب الفرق تلقائياً):`, currentAdj);
+  
   if (newVal !== null && !isNaN(parseInt(newVal))) {
-    const amount = parseInt(newVal);
-    if(amount === 0) return;
+    const newTotal = parseInt(newVal);
+    const diff = newTotal - currentAdj; // حساب الفرق الفعلي
+    
+    if (diff === 0) return; // لو لم تغير الرقم، لن يحدث شيء
 
     document.getElementById('loading').style.display = 'block';
     await db.from('family_points_adjustments').insert({
       member_id: membersMap[currentProfile],
-      adjustment_amount: amount,
-      reason: 'تعديل يدوي'
+      adjustment_amount: diff, // سيتم إضافة أو خصم الفرق فقط
+      reason: 'تحديث يدوي للرقم الإجمالي'
     });
     
     await loadProfileData(currentProfile);
@@ -245,13 +237,14 @@ function calculateStats() {
   });
 
   const totalPts = taskPts + currentAdj;
-  const money = Math.round(totalPts * MONEY_PER_POINT);
+  const money = totalPts * MONEY_PER_POINT; // ضرب إجمالي النقاط في 2.25
   const progress = (totalPts / YEARLY_TARGET_PTS) * 100;
   
-  return { totalPts, money, progress: progress.toFixed(1) };
+  // استخدام toFixed(2) لعرض القروش أو الفكة بشكل منسق
+  return { totalPts, money: money.toFixed(2), progress: progress.toFixed(1) };
 }
 
-/* ─── الواجهة (Render) ─── */
+/* ─── الواجهة ─── */
 function renderApp() {
   const stats = calculateStats();
   const profileName = currentProfile === 'omar' ? 'عمر' : currentProfile === 'mariam' ? 'مريم' : 'بودي';
@@ -271,11 +264,11 @@ function renderApp() {
             <span>${stats.totalPts} / ${YEARLY_TARGET_PTS}</span>
           </div>
           <div class="progress-bg"><div class="progress-fill" style="width:${stats.progress}%"></div></div>
-          <button class="edit-pts-btn" onclick="handleEditAdjustment()">⚙️ إضافة/خصم نقاط إضافية</button>
+          <button class="edit-pts-btn" onclick="handleEditAdjustment()">⚙️ تعديل النقاط الإضافية (${currentAdj})</button>
         </div>
         <div style="text-align:center">
           <div style="color:var(--text-dim); font-size:12px">المكافأة المستحقة</div>
-          <div style="font-size:32px; font-weight:900; color:var(--green)">${stats.money.toLocaleString()} <span style="font-size:14px">ج.م</span></div>
+          <div style="font-size:32px; font-weight:900; color:var(--green)">${stats.money} <span style="font-size:14px">ج.م</span></div>
         </div>
       </div>
 
